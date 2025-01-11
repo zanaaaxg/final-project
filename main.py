@@ -1,11 +1,14 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 import csv
 
 class FileEditor:
     def __init__(self, root):
         self.root = root
         self.root.title("File Editor")
+        
+        # Initialize selected_courses list
+        self.selected_courses = []
         
         # Set background color and padding
         bg_color = '#333333'  # Dark gray background
@@ -35,7 +38,7 @@ class FileEditor:
         
         tk.Label(input_frame, text="Year:", bg=bg_color, fg=fg_color).pack(side='left')
         self.year = ttk.Combobox(input_frame, width=5, state='readonly', background=input_bg)
-        self.year['values'] = ['All', '1', '2', '3', '4']
+        self.year['values'] = ['All', '1', '2', '3', '4', '5']
         self.year.set('All')
         self.year.pack(side='left', padx=5)
         
@@ -53,6 +56,8 @@ class FileEditor:
         tk.Button(button_container, text="Display", command=self.display_courses).pack(side='left', padx=5)
         tk.Button(button_container, text="Clear", command=self.clear_fields).pack(side='left', padx=5)
         tk.Button(button_container, text="Save", command=self.save_timetable).pack(side='left', padx=5)
+        tk.Button(button_container, text="View my schedule", 
+                 command=self.open_schedule_viewer).pack(side='left', padx=5)
         
         # Warning and Course labels
         warning_course_frame = tk.Frame(center_container, bg=bg_color)
@@ -203,12 +208,12 @@ class FileEditor:
             self.warnings.insert(tk.END, f"Error: {str(e)}")
 
     def clear_fields(self):
-        self.file_path.delete(0, tk.END)
-        self.dept_entry.delete(0, tk.END)
-        self.year.delete(0, tk.END)
-        self.year.insert(0, "1")
-        self.warnings.delete(1.0, tk.END)
-        self.courses.delete(1.0, tk.END)
+        self.dept_entry.set('All')  # Use set() for Combobox
+        self.year.set('All')  # Use set() for Combobox
+        self.warnings.delete(1.0, tk.END)  # Text widget uses 1.0
+        self.courses.delete(0, tk.END)  # Listbox uses 0
+        self.selected_listbox.delete(0, tk.END)  # Clear selected courses
+        self.selected_courses = []  # Reset selected courses list
 
     def save_timetable(self):
         try:
@@ -246,6 +251,170 @@ class FileEditor:
         except Exception as e:
             self.warnings.delete(1.0, tk.END)
             self.warnings.insert(tk.END, f"Error saving timetable: {str(e)}")
+
+    def open_schedule_viewer(self):
+        # Create modal window
+        self.schedule_window = tk.Toplevel(self.root)
+        self.schedule_window.title("Schedule Viewer")
+        self.schedule_window.configure(bg='#333333')
+        
+        # Make it modal
+        self.schedule_window.transient(self.root)
+        self.schedule_window.grab_set()
+        
+        # Center the window
+        window_width = 800
+        window_height = 600
+        screen_width = self.schedule_window.winfo_screenwidth()
+        screen_height = self.schedule_window.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.schedule_window.geometry(f'{window_width}x{window_height}+{x}+{y}')
+        
+        # Create main container
+        main_container = tk.Frame(self.schedule_window, bg='#333333', padx=20, pady=20)
+        main_container.pack(fill='both', expand=True)
+        
+        # File selection frame
+        file_frame = tk.Frame(main_container, bg='#333333')
+        file_frame.pack(fill='x', pady=(0, 20))
+        
+        tk.Label(file_frame, text="Select timesheet:", 
+                bg='#333333', fg='#FFFFFF').pack(side='left')
+        self.timesheet_path = tk.Entry(file_frame, width=40, bg='#F3F4F6')
+        self.timesheet_path.pack(side='left', padx=5)
+        tk.Button(file_frame, text="Browse", 
+                 command=self.browse_timesheet).pack(side='left')
+        
+        # Schedule display frame
+        self.schedule_frame = tk.Frame(main_container, bg='#333333')
+        self.schedule_frame.pack(fill='both', expand=True)
+        
+        # Create schedule grid
+        self.create_schedule_grid()
+
+    def browse_timesheet(self):
+        filename = filedialog.askopenfilename(
+            title="Select timesheet file",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if filename:
+            self.timesheet_path.delete(0, tk.END)
+            self.timesheet_path.insert(0, filename)
+            self.load_schedule()
+
+    def create_schedule_grid(self):
+        # Clear existing schedule
+        for widget in self.schedule_frame.winfo_children():
+            widget.destroy()
+            
+        # Time slots (9 AM to 8 PM)
+        times = [f"{h:02d}:00" for h in range(9, 21)]
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        
+        # Configure grid
+        for i in range(len(times) + 1):  # +1 for header row
+            self.schedule_frame.grid_rowconfigure(i, weight=1)
+        for i in range(len(days) + 1):  # +1 for time column
+            self.schedule_frame.grid_columnconfigure(i, weight=1)
+        
+        # Create headers
+        tk.Label(self.schedule_frame, width=8, bg='#333333', 
+                fg='#FFFFFF').grid(row=0, column=0)
+        
+        # Add day headers
+        for i, day in enumerate(days):
+            tk.Label(self.schedule_frame, text=day, bg='#333333', 
+                    fg='#FFFFFF', padx=10).grid(row=0, column=i+1)
+        
+        # Add time slots and create grid cells
+        for i, time in enumerate(times):
+            tk.Label(self.schedule_frame, text=time, bg='#333333', 
+                    fg='#FFFFFF').grid(row=i+1, column=0)
+            
+            # Create empty cells
+            for j in range(len(days)):
+                frame = tk.Frame(self.schedule_frame, bg='#F3F4F6', 
+                               width=120, height=30)
+                frame.grid(row=i+1, column=j+1, padx=2, pady=1, sticky='nsew')
+                frame.grid_propagate(False)
+
+    def load_schedule(self):
+        try:
+            with open(self.timesheet_path.get(), 'r') as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header
+                
+                # Clear existing schedule
+                self.create_schedule_grid()
+                
+                # Process each course
+                for row in reader:
+                    if len(row) >= 4:  # Ensure row has enough columns
+                        code, name, days_str, times_str = row
+                        if days_str and times_str:  # Skip empty schedules
+                            self.add_course_to_grid(code, name, days_str, times_str)
+                            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error loading schedule: {str(e)}")
+
+    def add_course_to_grid(self, code, name, days_str, times_str):
+        # Map full day names to column numbers (1-based as column 0 is for times)
+        days_map = {
+            'Monday': 1,
+            'Tuesday': 2,
+            'Wednesday': 3,
+            'Thursday': 4,
+            'Friday': 5
+        }
+        
+        # Split days and times
+        days = days_str.split()
+        times = times_str.split()
+        
+        for day in days:
+            if day not in days_map:
+                continue
+                
+            col = days_map[day]
+            
+            # Process each time slot
+            for time_slot in times:
+                if '-' not in time_slot:
+                    continue
+                    
+                start_time, end_time = time_slot.split('-')
+                
+                # Convert times to grid rows (9:00 = row 1, 10:00 = row 2, etc.)
+                try:
+                    start_hour = int(start_time.split(':')[0])
+                    end_hour = int(end_time.split(':')[0])
+                    start_minute = int(start_time.split(':')[1])
+                    end_minute = int(end_time.split(':')[1])
+                    
+                    # Calculate row positions (grid starts at 9:00)
+                    row_start = (start_hour - 9) + 1  # +1 because row 0 is header
+                    row_end = (end_hour - 9) + 1
+                    
+                    if end_minute > 0:
+                        row_end += 1
+                    
+                    # Create course block
+                    if row_start >= 1 and row_end <= 12:  # Ensure within grid bounds
+                        course_frame = tk.Frame(self.schedule_frame, bg='#4F46E5')
+                        course_frame.grid(row=row_start, column=col, 
+                                        rowspan=row_end-row_start,
+                                        padx=2, pady=1, sticky='nsew')
+                        
+                        # Add course information
+                        label_text = f"{code}\n{name}"
+                        tk.Label(course_frame, text=label_text,
+                                bg='#4F46E5', fg='#FFFFFF',
+                                wraplength=100, font=('Arial', 8)).pack(expand=True)
+                        
+                except ValueError as e:
+                    print(f"Error processing time for {code}: {e}")
+                    continue
 
 if __name__ == "__main__":
     root = tk.Tk()
